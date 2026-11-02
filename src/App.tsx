@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { LiveTickerBar } from './components/LiveTickerBar';
 import { ForexConverter } from './components/ForexConverter';
@@ -6,158 +6,105 @@ import { CryptoDashboard } from './components/CryptoDashboard';
 import { AboutSection } from './components/AboutSection';
 import { fetchForexRates, fetchForexHistory } from './services/forexService';
 import { fetchCryptoMarkets } from './services/cryptoService';
+import { useLivePrices } from './hooks/useLivePrices';
 import { CryptoCoin } from './types/crypto';
-import { ForexPeriod, ForexHistoryPoint } from './types/forex';
+import { ForexRates, ForexPeriod, ForexHistoryPoint } from './types/forex';
 
 export function App() {
   const [activeTab, setActiveTab] = useState<'forex' | 'crypto' | 'about'>('forex');
-  const [darkMode, setDarkMode] = useState<boolean>(true);
-
-  // Forex state
-  const [rates, setRates] = useState<Record<string, number>>({});
-  const [baseCurrency, setBaseCurrency] = useState<string>('USD');
-  const [targetCurrency, setTargetCurrency] = useState<string>('BRL');
-  const [lastUpdated, setLastUpdated] = useState<string>(new Date().toISOString());
-  const [source, setSource] = useState<string>('Frankfurter API');
+  const [darkMode, setDarkMode] = useState(() => {
+    try {
+      return localStorage.getItem('openbit_theme') !== 'light';
+    } catch {
+      return true;
+    }
+  });
+  const [baseCurrency, setBaseCurrency] = useState('USD');
+  const [targetCurrency, setTargetCurrency] = useState('BRL');
+  const [forex, setForex] = useState<ForexRates | null>(null);
   const [historyData, setHistoryData] = useState<ForexHistoryPoint[]>([]);
   const [historyPeriod, setHistoryPeriod] = useState<ForexPeriod>('30d');
-  const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
-
-  // Crypto state
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [coins, setCoins] = useState<CryptoCoin[]>([]);
-  const [livePrices, setLivePrices] = useState<Record<string, { price: number; dir: 'up' | 'down' | 'neutral' }>>({});
-  const [, setWsConnected] = useState<boolean>(false);
-  const prevPricesRef = useRef<Record<string, number>>({});
+  const [forexError, setForexError] = useState('');
+  const [cryptoError, setCryptoError] = useState('');
+  const [loadingCrypto, setLoadingCrypto] = useState(true);
+  const [refresh, setRefresh] = useState(0);
+  const { prices: livePrices, connected: wsConnected } = useLivePrices(coins);
+  const rates = forex?.base === baseCurrency ? forex.rates : {};
+  const lastUpdated = forex?.lastUpdated ?? '';
+  const source =
+    forex?.base === baseCurrency
+      ? forex.source
+      : forexError
+        ? 'Indisponível'
+        : 'Carregando taxas...';
+  const handleRefreshAll = () => setRefresh((value) => value + 1);
 
-  // Initial data loading
   useEffect(() => {
-    loadForexData(baseCurrency);
-    loadCryptoData();
-  }, [baseCurrency]);
-
-  // Load history when forex pair or period changes
-  useEffect(() => {
-    loadForexHistoryData(baseCurrency, targetCurrency, historyPeriod);
-  }, [baseCurrency, targetCurrency, historyPeriod]);
-
-  // Binance WebSocket for live dashboard prices
-  useEffect(() => {
-    if (coins.length === 0) return;
-
-    let ws: WebSocket | null = null;
-    let reconnectTimer: any = null;
-    let isSubscribed = true;
-
-    const connectWs = () => {
-      if (!isSubscribed) return;
-      try {
-        const streams = coins.map((c) => `${c.binanceSymbol}@ticker`).join('/');
-        ws = new WebSocket(`wss://stream.binance.com:9443/stream?streams=${streams}`);
-
-        ws.onopen = () => {
-          if (isSubscribed) setWsConnected(true);
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const message = JSON.parse(event.data);
-            const data = message.data;
-            if (!data || !data.s || !data.c) return;
-
-            const symbol = data.s.replace('USDT', '').toUpperCase();
-            const newPrice = parseFloat(data.c);
-            const oldPrice = prevPricesRef.current[symbol] || newPrice;
-
-            let dir: 'up' | 'down' | 'neutral' = 'neutral';
-            if (newPrice > oldPrice) dir = 'up';
-            else if (newPrice < oldPrice) dir = 'down';
-
-            prevPricesRef.current[symbol] = newPrice;
-
-            setLivePrices((prev) => ({
-              ...prev,
-              [symbol]: { price: newPrice, dir },
-            }));
-          } catch (e) {
-            console.error('Crypto WS parse error:', e);
-          }
-        };
-
-        ws.onerror = () => {
-          if (isSubscribed) setWsConnected(false);
-        };
-
-        ws.onclose = () => {
-          if (isSubscribed) {
-            setWsConnected(false);
-            reconnectTimer = setTimeout(connectWs, 5000);
-          }
-        };
-      } catch (err) {
-        if (isSubscribed) {
-          setWsConnected(false);
-          reconnectTimer = setTimeout(connectWs, 5000);
-        }
-      }
-    };
-
-    connectWs();
-
-    return () => {
-      isSubscribed = false;
-      if (ws) ws.close();
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-    };
-  }, [coins]);
-
-  const loadForexData = async (base: string) => {
+    document.documentElement.classList.toggle('dark', darkMode);
     try {
-      const data = await fetchForexRates(base);
-      setRates(data.rates);
-      setLastUpdated(data.lastUpdated);
-      setSource(data.source);
-    } catch (err) {
-      console.error('Failed to load forex:', err);
+      localStorage.setItem('openbit_theme', darkMode ? 'dark' : 'light');
+    } catch {
+      /* Storage is optional. */
     }
-  };
-
-  const loadCryptoData = async () => {
-    try {
-      const marketCoins = await fetchCryptoMarkets();
-      setCoins(marketCoins);
-      const initialPrices: Record<string, { price: number; dir: 'up' | 'down' | 'neutral' }> = {};
-      marketCoins.forEach((c) => {
-        initialPrices[c.symbol.toUpperCase()] = { price: c.current_price, dir: 'neutral' };
-        prevPricesRef.current[c.symbol.toUpperCase()] = c.current_price;
+  }, [darkMode]);
+  useEffect(() => {
+    let cancelled = false;
+    setForex(null);
+    setForexError('');
+    fetchForexRates(baseCurrency, refresh > 0, targetCurrency)
+      .then((data) => {
+        if (!cancelled) setForex(data);
+      })
+      .catch(() => {
+        if (!cancelled) setForexError('Taxas indisponíveis. Tente atualizar novamente.');
       });
-      setLivePrices(initialPrices);
-    } catch (err) {
-      console.error('Failed to load crypto:', err);
-    }
-  };
-
-  const loadForexHistoryData = async (base: string, target: string, period: ForexPeriod) => {
+    return () => {
+      cancelled = true;
+    };
+  }, [baseCurrency, targetCurrency, refresh]);
+  useEffect(() => {
+    let cancelled = false;
+    setCryptoError('');
+    setCoins([]);
+    setLoadingCrypto(true);
+    fetchCryptoMarkets(refresh > 0)
+      .then((data) => {
+        if (!cancelled) setCoins(data);
+      })
+      .catch(() => {
+        if (!cancelled) setCryptoError('Criptomoedas indisponíveis. Tente atualizar novamente.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCrypto(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refresh]);
+  useEffect(() => {
+    let cancelled = false;
+    setHistoryData([]);
     setLoadingHistory(true);
-    try {
-      const points = await fetchForexHistory(base, target, period);
-      setHistoryData(points);
-    } catch (err) {
-      console.error('Failed to load forex history:', err);
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
-
-  const handleRefreshAll = () => {
-    loadForexData(baseCurrency);
-    loadCryptoData();
-    loadForexHistoryData(baseCurrency, targetCurrency, historyPeriod);
-  };
+    fetchForexHistory(baseCurrency, targetCurrency, historyPeriod, refresh > 0)
+      .then((data) => {
+        if (!cancelled) setHistoryData(data);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingHistory(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [baseCurrency, targetCurrency, historyPeriod, refresh]);
 
   return (
-    <div className={`min-h-screen bg-dark-bg text-slate-100 flex flex-col selection:bg-brand-500 selection:text-black ${darkMode ? 'dark' : ''}`}>
+    <div
+      className={`min-h-screen bg-dark-bg text-slate-100 flex flex-col selection:bg-brand-500 selection:text-black ${darkMode ? 'dark' : ''}`}
+    >
       {/* Top Live Ticker */}
-      <LiveTickerBar coins={coins} />
+      <LiveTickerBar coins={coins} prices={livePrices} connected={wsConnected} />
 
       {/* Navbar */}
       <Navbar
@@ -169,6 +116,16 @@ export function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+        {activeTab === 'forex' && forexError && (
+          <p role="alert" className="mb-4 text-red-400">
+            {forexError}
+          </p>
+        )}
+        {activeTab === 'crypto' && cryptoError && (
+          <p role="alert" className="mb-4 text-red-400">
+            {cryptoError}
+          </p>
+        )}
         {activeTab === 'forex' && (
           <ForexConverter
             rates={rates}
@@ -189,6 +146,8 @@ export function App() {
         {activeTab === 'crypto' && (
           <CryptoDashboard
             coins={coins}
+            connected={wsConnected}
+            loading={loadingCrypto}
             livePrices={livePrices}
             onRefresh={handleRefreshAll}
           />

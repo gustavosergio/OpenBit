@@ -4,7 +4,7 @@
 
 @layer base {
   body {
-    @apply bg-[#0A0D14] text-slate-100 font-sans;
+    @apply bg-dark-bg text-slate-100 font-sans;
   }
 }
 
@@ -15,14 +15,49 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #0A0D14;
+  background: rgb(var(--surface-background));
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2A364F;
+  background: rgb(var(--surface-border));
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3B4D71;
+  background: rgb(var(--text-muted));
+}
+
+:root {
+  color-scheme: light;
+  --surface-background: 248 250 252;
+  --surface-card: 255 255 255;
+  --surface-hover: 241 245 249;
+  --surface-border: 203 213 225;
+  --surface-subtle: 226 232 240;
+  --text-strong: 15 23 42;
+  --text-primary: 30 41 59;
+  --text-body: 51 65 85;
+  --text-muted: 71 85 105;
+  --text-subtle: 100 116 139;
+}
+:root.dark {
+  color-scheme: dark;
+  --surface-background: 10 13 20;
+  --surface-card: 18 24 36;
+  --surface-hover: 27 36 54;
+  --surface-border: 42 54 79;
+  --surface-subtle: 30 41 59;
+  --text-strong: 241 245 249;
+  --text-primary: 226 232 240;
+  --text-body: 203 213 225;
+  --text-muted: 148 163 184;
+  --text-subtle: 100 116 139;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }

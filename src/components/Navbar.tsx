@@ -8,20 +8,31 @@ interface NavbarProps {
   setDarkMode: (val: boolean) => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, darkMode, setDarkMode }) => {
+export const Navbar: React.FC<NavbarProps> = ({
+  activeTab,
+  setActiveTab,
+  darkMode,
+  setDarkMode,
+}) => {
   return (
     <header className="sticky top-0 z-50 bg-dark-card/90 backdrop-blur-md border-b border-dark-border transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        
         {/* Logo & Brand */}
-        <div className="flex items-center space-x-3 cursor-pointer group" onClick={() => setActiveTab('forex')}>
+        <div
+          className="flex items-center space-x-3 cursor-pointer group"
+          onClick={() => setActiveTab('forex')}
+        >
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-500 to-brand-400 flex items-center justify-center shadow-lg shadow-brand-500/20 group-hover:scale-105 transition-transform">
-            <Terminal className="w-5 h-5 text-dark-bg font-black" />
+            <Terminal className="w-5 h-5 text-brand-ink font-black" />
           </div>
           <div>
             <div className="flex items-center space-x-1.5">
-              <span className="font-extrabold text-xl tracking-tight text-slate-100">Open<span className="text-brand-500">Bit</span></span>
-              <span className="text-[10px] font-mono bg-brand-500/10 text-brand-400 border border-brand-500/30 px-1.5 py-0.5 rounded">v2.0</span>
+              <span className="font-extrabold text-xl tracking-tight text-slate-100">
+                Open<span className="text-brand-500">Bit</span>
+              </span>
+              <span className="text-[10px] font-mono bg-brand-500/10 text-brand-400 border border-brand-500/30 px-1.5 py-0.5 rounded">
+                v2.0
+              </span>
             </div>
             <p className="text-[11px] text-slate-400 font-medium">Câmbio & Cripto em Tempo Real</p>
           </div>
@@ -33,19 +44,19 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, darkMod
             onClick={() => setActiveTab('forex')}
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center space-x-2 ${
               activeTab === 'forex'
-                ? 'bg-brand-500 text-dark-bg shadow-md shadow-brand-500/20'
+                ? 'bg-brand-500 text-brand-ink shadow-md shadow-brand-500/20'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-dark-hover'
             }`}
           >
             <ArrowRightLeft className="w-4 h-4" />
             <span>Conversor de Câmbio</span>
           </button>
-          
+
           <button
             onClick={() => setActiveTab('crypto')}
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center space-x-2 ${
               activeTab === 'crypto'
-                ? 'bg-brand-500 text-dark-bg shadow-md shadow-brand-500/20'
+                ? 'bg-brand-500 text-brand-ink shadow-md shadow-brand-500/20'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-dark-hover'
             }`}
           >
@@ -57,7 +68,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, darkMod
             onClick={() => setActiveTab('about')}
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center space-x-2 ${
               activeTab === 'about'
-                ? 'bg-brand-500 text-dark-bg shadow-md shadow-brand-500/20'
+                ? 'bg-brand-500 text-brand-ink shadow-md shadow-brand-500/20'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-dark-hover'
             }`}
           >
@@ -82,6 +93,8 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, darkMod
             onClick={() => setDarkMode(!darkMode)}
             className="w-10 h-10 rounded-xl bg-dark-hover hover:bg-dark-border border border-dark-border flex items-center justify-center text-slate-300 transition-colors"
             title="Alternar tema"
+            aria-label="Alternar tema"
+            aria-pressed={!darkMode}
           >
             {darkMode ? '🌙' : '☀️'}
           </button>

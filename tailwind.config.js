@@ -1,14 +1,19 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-  ],
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   darkMode: 'class',
   theme: {
     extend: {
       colors: {
+        slate: {
+          100: 'rgb(var(--text-strong) / <alpha-value>)',
+          200: 'rgb(var(--text-primary) / <alpha-value>)',
+          300: 'rgb(var(--text-body) / <alpha-value>)',
+          400: 'rgb(var(--text-muted) / <alpha-value>)',
+          500: 'rgb(var(--text-subtle) / <alpha-value>)',
+        },
         brand: {
+          ink: '#0A0D14',
           50: '#fffbe1',
           100: '#fff4b8',
           200: '#ffe885',
@@ -22,25 +27,25 @@ export default {
           accent: '#10B981', // Neon Emerald
         },
         dark: {
-          bg: '#0A0D14',
-          card: '#121824',
-          hover: '#1B2436',
-          border: '#2A364F',
-          subtle: '#1E293B',
+          bg: 'rgb(var(--surface-background) / <alpha-value>)',
+          card: 'rgb(var(--surface-card) / <alpha-value>)',
+          hover: 'rgb(var(--surface-hover) / <alpha-value>)',
+          border: 'rgb(var(--surface-border) / <alpha-value>)',
+          subtle: 'rgb(var(--surface-subtle) / <alpha-value>)',
         },
         light: {
           bg: '#F8FAFC',
           card: '#FFFFFF',
           hover: '#F1F5F9',
           border: '#E2E8F0',
-        }
+        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'],
       },
       animation: {
-        'ticker': 'ticker 35s linear infinite',
+        ticker: 'ticker 35s linear infinite',
         'pulse-subtle': 'pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         'flash-green': 'flash-green 0.8s ease-out',
         'flash-red': 'flash-red 0.8s ease-out',
@@ -56,14 +61,14 @@ export default {
         },
         'flash-green': {
           '0%': { backgroundColor: 'rgba(16, 185, 129, 0.35)', borderColor: '#10B981' },
-          '100%': { backgroundColor: 'transparent' }
+          '100%': { backgroundColor: 'transparent' },
         },
         'flash-red': {
           '0%': { backgroundColor: 'rgba(239, 68, 68, 0.35)', borderColor: '#EF4444' },
-          '100%': { backgroundColor: 'transparent' }
-        }
-      }
+          '100%': { backgroundColor: 'transparent' },
+        },
+      },
     },
   },
   plugins: [],
-}
+};

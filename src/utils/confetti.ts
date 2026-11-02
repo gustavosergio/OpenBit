@@ -1,6 +1,7 @@
 import confetti from 'canvas-confetti';
 
 export function triggerConfetti() {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
   confetti({
     particleCount: 70,
     spread: 60,
@@ -10,6 +11,7 @@ export function triggerConfetti() {
 }
 
 export function triggerGoldenRain() {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
   const end = Date.now() + 1.5 * 1000;
   const colors = ['#F59E0B', '#FBBF24', '#FCD34D', '#10B981'];
 

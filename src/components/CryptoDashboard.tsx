@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useDialog } from '../hooks/useDialog';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, TrendingUp, TrendingDown, RefreshCw, Zap, ExternalLink } from 'lucide-react';
-import { CryptoCoin, CryptoSortOption } from '../types/crypto';
+import { CryptoCoin, CryptoSortOption, CryptoHistoryPoint } from '../types/crypto';
 import { formatCurrency } from '../utils/formatters';
 import { triggerGoldenRain } from '../utils/confetti';
 import { fetchCryptoHistory } from '../services/cryptoService';
@@ -10,18 +11,24 @@ interface CryptoDashboardProps {
   coins: CryptoCoin[];
   livePrices: Record<string, { price: number; dir: 'up' | 'down' | 'neutral' }>;
   onRefresh: () => void;
+  connected: boolean;
+  loading: boolean;
 }
 
 export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
   coins,
   livePrices,
   onRefresh,
+  connected,
+  loading,
 }) => {
   const [search, setSearch] = useState('');
   const [sortOption, setSortOption] = useState<CryptoSortOption>('rank');
   const [sortAsc, setSortAsc] = useState(true);
   const [selectedCoin, setSelectedCoin] = useState<CryptoCoin | null>(null);
-  const [coinHistory, setCoinHistory] = useState<any[]>([]);
+  const closeDialog = useCallback(() => setSelectedCoin(null), []);
+  useDialog(selectedCoin !== null, closeDialog);
+  const [coinHistory, setCoinHistory] = useState<CryptoHistoryPoint[]>([]);
   const [historyDays, setHistoryDays] = useState<number>(7);
   const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
 
@@ -33,29 +40,34 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
     coins.forEach((c) => {
       const sym = c.symbol.toUpperCase();
       const live = livePrices[sym];
-      if (live && live.price >= c.high_24h && !notifiedAthRef.current[sym]) {
+      if (live && c.high_24h > 0 && live.price > c.high_24h && !notifiedAthRef.current[sym]) {
         notifiedAthRef.current[sym] = true;
         triggerGoldenRain();
       }
     });
   }, [livePrices, coins]);
 
-  const handleOpenDetail = async (coin: CryptoCoin) => {
-    setSelectedCoin(coin);
+  useEffect(() => {
+    let cancelled = false;
+    setCoinHistory([]);
+    if (!selectedCoin) {
+      setLoadingHistory(false);
+      return;
+    }
     setLoadingHistory(true);
-    const hist = await fetchCryptoHistory(coin.id, historyDays);
-    setCoinHistory(hist);
-    setLoadingHistory(false);
-  };
-
-  const handleDaysChange = async (days: number) => {
-    if (!selectedCoin) return;
-    setHistoryDays(days);
-    setLoadingHistory(true);
-    const hist = await fetchCryptoHistory(selectedCoin.id, days);
-    setCoinHistory(hist);
-    setLoadingHistory(false);
-  };
+    fetchCryptoHistory(selectedCoin.id, historyDays)
+      .then((history) => {
+        if (!cancelled) setCoinHistory(history);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingHistory(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCoin, historyDays]);
+  const handleOpenDetail = (coin: CryptoCoin) => setSelectedCoin(coin);
+  const handleDaysChange = (days: number) => setHistoryDays(days);
 
   const filtered = coins.filter(
     (c) =>
@@ -72,8 +84,8 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
         valB = b.market_cap_rank;
         break;
       case 'price':
-        valA = a.current_price;
-        valB = b.current_price;
+        valA = livePrices[a.symbol.toUpperCase()]?.price ?? a.current_price;
+        valB = livePrices[b.symbol.toUpperCase()]?.price ?? b.current_price;
         break;
       case 'change24h':
         valA = a.price_change_percentage_24h;
@@ -96,10 +108,18 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
         <div>
           <div className="flex items-center space-x-2 text-brand-500 font-bold text-xs uppercase tracking-wider mb-1">
             <Zap className="w-4 h-4 text-brand-500 fill-brand-500 animate-pulse" />
-            <span>Binance WebSocket Stream Ativo</span>
+            <span>
+              {connected
+                ? 'Binance conectada • preços em USDT'
+                : 'Preços de referência CoinGecko em USD'}
+            </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-100">Painel de Criptomoedas</h1>
-          <p className="text-sm text-slate-400 mt-1">Preços em tempo real com piscar dinâmico e dados CoinGecko.</p>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-100">
+            Painel de Criptomoedas
+          </h1>
+          <p className="text-sm text-slate-400 mt-1">
+            Preços em tempo real com piscar dinâmico e dados CoinGecko.
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
@@ -139,10 +159,20 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
                 }
               }}
               className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all ${
-                sortOption === opt ? 'bg-brand-500 text-dark-bg' : 'bg-dark-bg hover:bg-dark-hover text-slate-300 border border-dark-border'
+                sortOption === opt
+                  ? 'bg-brand-500 text-brand-ink'
+                  : 'bg-dark-bg hover:bg-dark-hover text-slate-300 border border-dark-border'
               }`}
             >
-              {opt === 'rank' ? 'Ranking' : opt === 'price' ? 'Preço' : opt === 'change24h' ? '24h %' : opt === 'volume' ? 'Volume' : 'Nome'}
+              {opt === 'rank'
+                ? 'Ranking'
+                : opt === 'price'
+                  ? 'Preço'
+                  : opt === 'change24h'
+                    ? '24h %'
+                    : opt === 'volume'
+                      ? 'Volume'
+                      : 'Nome'}
               {sortOption === opt && (sortAsc ? ' ▲' : ' ▼')}
             </button>
           ))}
@@ -153,6 +183,16 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
         </div>
       </div>
 
+      {loading && (
+        <p role="status" className="text-sm text-slate-400">
+          Carregando criptomoedas...
+        </p>
+      )}
+      {!loading && sorted.length === 0 && (
+        <p role="status" className="text-sm text-slate-400">
+          Nenhum ativo disponível para esta busca.
+        </p>
+      )}
       {/* Crypto Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {sorted.map((coin) => {
@@ -166,6 +206,14 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
           return (
             <div
               key={coin.id}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  handleOpenDetail(coin);
+                }
+              }}
               onClick={() => handleOpenDetail(coin)}
               className={`bg-dark-card border border-dark-border hover:border-brand-500/50 rounded-3xl p-6 shadow-xl cursor-pointer transition-all duration-300 hover:-translate-y-1 relative group ${
                 isUp ? 'animate-flash-green' : isDown ? 'animate-flash-red' : ''
@@ -173,11 +221,17 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
             >
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center space-x-3">
-                  <img src={coin.image} alt={coin.name} className="w-10 h-10 rounded-full bg-dark-bg p-1 border border-dark-border" />
+                  <img
+                    src={coin.image}
+                    alt={coin.name}
+                    className="w-10 h-10 rounded-full bg-dark-bg p-1 border border-dark-border"
+                  />
                   <div>
                     <div className="flex items-center space-x-1.5">
                       <span className="font-extrabold text-slate-100">{sym}</span>
-                      <span className="text-[10px] text-slate-500 font-mono">#{coin.market_cap_rank}</span>
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        #{coin.market_cap_rank}
+                      </span>
                     </div>
                     <p className="text-xs text-slate-400 font-medium">{coin.name}</p>
                   </div>
@@ -185,16 +239,27 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
 
                 <div
                   className={`flex items-center space-x-1 text-xs font-mono font-bold px-2 py-1 rounded-lg ${
-                    change24h >= 0 ? 'text-brand-accent bg-brand-accent/10' : 'text-red-400 bg-red-400/10'
+                    change24h >= 0
+                      ? 'text-brand-accent bg-brand-accent/10'
+                      : 'text-red-400 bg-red-400/10'
                   }`}
                 >
-                  {change24h >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-                  <span>{change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%</span>
+                  {change24h >= 0 ? (
+                    <TrendingUp className="w-3.5 h-3.5" />
+                  ) : (
+                    <TrendingDown className="w-3.5 h-3.5" />
+                  )}
+                  <span>
+                    {change24h >= 0 ? '+' : ''}
+                    {change24h.toFixed(2)}%
+                  </span>
                 </div>
               </div>
 
               <div className="space-y-1 my-4">
-                <p className="text-xs text-slate-400 font-medium">Preço ao Vivo (Binance)</p>
+                <p className="text-xs text-slate-400 font-medium">
+                  {live ? 'Preço ao vivo (USDT ≈ USD)' : 'Último preço CoinGecko (USD)'}
+                </p>
                 <div className="font-mono text-2xl font-extrabold text-slate-100">
                   {formatCurrency(currentPrice, 'USD')}
                 </div>
@@ -203,11 +268,15 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
               <div className="grid grid-cols-2 gap-2 pt-3 border-t border-dark-border text-xs font-mono text-slate-400">
                 <div>
                   <span className="block text-[10px] text-slate-500">Mkt Cap</span>
-                  <span className="text-slate-300 font-semibold">${(coin.market_cap / 1e9).toFixed(2)}B</span>
+                  <span className="text-slate-300 font-semibold">
+                    ${(coin.market_cap / 1e9).toFixed(2)}B
+                  </span>
                 </div>
                 <div className="text-right">
                   <span className="block text-[10px] text-slate-500">Máx 24h</span>
-                  <span className="text-slate-300 font-semibold">${coin.high_24h.toLocaleString()}</span>
+                  <span className="text-slate-300 font-semibold">
+                    ${coin.high_24h.toLocaleString()}
+                  </span>
                 </div>
               </div>
 
@@ -223,12 +292,20 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
 
       {/* Coin Detail Modal */}
       {selectedCoin && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Detalhes da criptomoeda"
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4"
+        >
           <div className="bg-dark-card border border-dark-border w-full max-w-3xl rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 animate-in fade-in zoom-in duration-200 relative max-h-[90vh] overflow-y-auto">
-            
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
-                <img src={selectedCoin.image} alt={selectedCoin.name} className="w-12 h-12 rounded-full bg-dark-bg p-1 border border-dark-border" />
+                <img
+                  src={selectedCoin.image}
+                  alt={selectedCoin.name}
+                  className="w-12 h-12 rounded-full bg-dark-bg p-1 border border-dark-border"
+                />
                 <div>
                   <div className="flex items-center space-x-2">
                     <h2 className="text-2xl font-black text-slate-100">{selectedCoin.name}</h2>
@@ -236,12 +313,15 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
                       {selectedCoin.symbol.toUpperCase()}/USDT
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400">Ranking global #{selectedCoin.market_cap_rank}</p>
+                  <p className="text-xs text-slate-400">
+                    Ranking global #{selectedCoin.market_cap_rank}
+                  </p>
                 </div>
               </div>
 
               <button
                 onClick={() => setSelectedCoin(null)}
+                aria-label="Fechar detalhes"
                 className="w-10 h-10 rounded-2xl bg-dark-hover hover:bg-dark-border text-slate-400 hover:text-slate-200 font-bold flex items-center justify-center transition-colors"
               >
                 ✕
@@ -253,22 +333,33 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
               <div>
                 <span className="text-[11px] text-slate-500 block">Preço Atual</span>
                 <span className="text-lg font-bold text-slate-100">
-                  {formatCurrency(livePrices[selectedCoin.symbol.toUpperCase()]?.price || selectedCoin.current_price, 'USD')}
+                  {formatCurrency(
+                    livePrices[selectedCoin.symbol.toUpperCase()]?.price ||
+                      selectedCoin.current_price,
+                    'USD'
+                  )}
                 </span>
               </div>
               <div>
                 <span className="text-[11px] text-slate-500 block">Variação 24h</span>
-                <span className={`text-lg font-bold ${selectedCoin.price_change_percentage_24h >= 0 ? 'text-brand-accent' : 'text-red-400'}`}>
-                  {selectedCoin.price_change_percentage_24h >= 0 ? '+' : ''}{selectedCoin.price_change_percentage_24h.toFixed(2)}%
+                <span
+                  className={`text-lg font-bold ${selectedCoin.price_change_percentage_24h >= 0 ? 'text-brand-accent' : 'text-red-400'}`}
+                >
+                  {selectedCoin.price_change_percentage_24h >= 0 ? '+' : ''}
+                  {selectedCoin.price_change_percentage_24h.toFixed(2)}%
                 </span>
               </div>
               <div>
                 <span className="text-[11px] text-slate-500 block">Máxima 24h</span>
-                <span className="text-lg font-bold text-slate-300">${selectedCoin.high_24h.toLocaleString()}</span>
+                <span className="text-lg font-bold text-slate-300">
+                  ${selectedCoin.high_24h.toLocaleString()}
+                </span>
               </div>
               <div>
                 <span className="text-[11px] text-slate-500 block">Mínima 24h</span>
-                <span className="text-lg font-bold text-slate-300">${selectedCoin.low_24h.toLocaleString()}</span>
+                <span className="text-lg font-bold text-slate-300">
+                  ${selectedCoin.low_24h.toLocaleString()}
+                </span>
               </div>
             </div>
 
@@ -287,7 +378,9 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
                       key={p.days}
                       onClick={() => handleDaysChange(p.days)}
                       className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                        historyDays === p.days ? 'bg-brand-500 text-dark-bg' : 'text-slate-400 hover:text-slate-200'
+                        historyDays === p.days
+                          ? 'bg-brand-500 text-brand-ink'
+                          : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
                       {p.label}
@@ -312,13 +405,30 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
                         </linearGradient>
                       </defs>
                       <XAxis dataKey="date" stroke="#64748b" fontSize={10} />
-                      <YAxis stroke="#64748b" fontSize={10} domain={['auto', 'auto']} tickFormatter={(val) => `$${val}`} />
-                      <Tooltip
-                        contentStyle={{ backgroundColor: '#121824', borderColor: '#2A364F', borderRadius: '12px', fontSize: '12px' }}
-                        labelStyle={{ color: '#94a3b8' }}
-                        formatter={(value: any) => [formatCurrency(Number(value), 'USD'), 'Preço']}
+                      <YAxis
+                        stroke="#64748b"
+                        fontSize={10}
+                        domain={['auto', 'auto']}
+                        tickFormatter={(val) => `$${val}`}
                       />
-                      <Area type="monotone" dataKey="price" stroke="#10B981" strokeWidth={2.5} fillOpacity={1} fill="url(#cryptoGrad)" />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: 'rgb(var(--surface-card))',
+                          borderColor: 'rgb(var(--surface-border))',
+                          borderRadius: '12px',
+                          fontSize: '12px',
+                        }}
+                        labelStyle={{ color: 'rgb(var(--text-muted))' }}
+                        formatter={(value) => [formatCurrency(Number(value), 'USD'), 'Preço']}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="price"
+                        stroke="#10B981"
+                        strokeWidth={2.5}
+                        fillOpacity={1}
+                        fill="url(#cryptoGrad)"
+                      />
                     </AreaChart>
                   </ResponsiveContainer>
                 )}
@@ -343,7 +453,6 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
                 Fechar
               </button>
             </div>
-
           </div>
         </div>
       )}

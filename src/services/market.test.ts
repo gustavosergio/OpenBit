@@ -188,3 +188,18 @@ describe('complete crypto catalog', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+it('isolates quote currency caches and requests history in the selected currency', async () => {
+  const { fetchCryptoMarkets, fetchCryptoHistory } = await import('./cryptoService');
+  fetchMock.mockResolvedValue(
+    json([{ id: 'bitcoin', symbol: 'btc', name: 'Bitcoin', current_price: 100 }])
+  );
+  await fetchCryptoMarkets(false, 1, undefined, 'USD');
+  await fetchCryptoMarkets(false, 1, undefined, 'BRL');
+  await fetchCryptoMarkets(false, 1, undefined, 'USD');
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(fetchMock.mock.calls[1][0]).toContain('vs_currency=brl');
+  fetchMock.mockResolvedValue(json({ prices: [[1000, 500]] }));
+  expect((await fetchCryptoHistory('bitcoin', 7, 'BRL'))[0].price).toBe(500);
+  expect(fetchMock.mock.calls[2][0]).toContain('vs_currency=brl');
+});

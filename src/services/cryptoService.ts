@@ -21,6 +21,7 @@ export interface CryptoQuery {
   page: number;
   search: string;
   favoriteIds?: string[];
+  currency?: string;
 }
 export interface CryptoPage {
   coins: CryptoCoin[];
@@ -60,11 +61,12 @@ export async function fetchCryptoCatalog(): Promise<CatalogCoin[]> {
 export async function fetchCryptoMarkets(
   force = false,
   page = 1,
-  ids?: string[]
+  ids?: string[],
+  currency = 'USD'
 ): Promise<CryptoCoin[]> {
   if (ids && ids.length === 0) return [];
   const params = new URLSearchParams({
-    vs_currency: 'usd',
+    vs_currency: currency.toLowerCase(),
     order: 'market_cap_desc',
     per_page: String(CRYPTO_PAGE_SIZE),
     page: String(Math.max(1, page)),
@@ -127,7 +129,10 @@ export async function fetchCryptoPage(query: CryptoQuery, force = false): Promis
   const search = query.search.trim().toLocaleLowerCase();
   const favorites = query.favoriteIds ? new Set(query.favoriteIds) : undefined;
   if (!search && !favorites) {
-    return { coins: await fetchCryptoMarkets(force, query.page), total: catalog.length };
+    return {
+      coins: await fetchCryptoMarkets(force, query.page, undefined, query.currency),
+      total: catalog.length,
+    };
   }
   const matches = catalog
     .filter(
@@ -151,7 +156,8 @@ export async function fetchCryptoPage(query: CryptoQuery, force = false): Promis
   const markets = await fetchCryptoMarkets(
     force,
     1,
-    selected.map((coin) => coin.id)
+    selected.map((coin) => coin.id),
+    query.currency
   );
   const byId = new Map(markets.map((coin) => [coin.id, coin]));
   const coins = selected.map(
@@ -172,12 +178,18 @@ export async function fetchCryptoPage(query: CryptoQuery, force = false): Promis
   );
   return { coins, total: matches.length };
 }
-export async function fetchCryptoHistory(coinId: string, days = 7): Promise<CryptoHistoryPoint[]> {
+export async function fetchCryptoHistory(
+  coinId: string,
+  days = 7,
+  currency = 'USD'
+): Promise<CryptoHistoryPoint[]> {
   try {
     const data = await fetchJson(
       'https://api.coingecko.com/api/v3/coins/' +
         encodeURIComponent(coinId) +
-        '/market_chart?vs_currency=usd&days=' +
+        '/market_chart?vs_currency=' +
+        encodeURIComponent(currency.toLowerCase()) +
+        '&days=' +
         days
     );
     if (!isRecord(data) || !Array.isArray(data.prices)) return [];

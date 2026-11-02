@@ -1,5 +1,5 @@
 import { useDialog } from '../hooks/useDialog';
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Search, Star, TrendingUp, TrendingDown, RefreshCw, Zap, ExternalLink } from 'lucide-react';
 import { CryptoCoin, CryptoSortOption, CryptoHistoryPoint } from '../types/crypto';
 import { formatCurrency } from '../utils/formatters';
@@ -8,6 +8,8 @@ import { fetchCryptoHistory, CryptoQuery, CRYPTO_PAGE_SIZE } from '../services/c
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts';
 
 interface CryptoDashboardProps {
+  currency?: string;
+  selectedCurrency?: string;
   coins: CryptoCoin[];
   livePrices: Record<string, { price: number; dir: 'up' | 'down' | 'neutral' }>;
   onRefresh: () => void;
@@ -18,14 +20,25 @@ interface CryptoDashboardProps {
 }
 
 export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
-  coins,
+  coins: sourceCoins,
+  currency: dataCurrency = 'USD',
+  selectedCurrency = 'USD',
   livePrices,
   onRefresh,
   connected,
   loading,
-  total = coins.length,
+  total = sourceCoins.length,
   onQueryChange,
 }) => {
+  const [currency, setCurrency] = useState(selectedCurrency);
+  const coins = useMemo(
+    () => (currency === dataCurrency ? sourceCoins : []),
+    [currency, dataCurrency, sourceCoins]
+  );
+  const displayLivePrices = useMemo(
+    () => (currency === 'USD' ? livePrices : {}),
+    [currency, livePrices]
+  );
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -57,10 +70,11 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
   useEffect(() => {
     onQueryChange?.({
       page,
+      currency,
       search: debouncedSearch,
       ...(favoritesOnly ? { favoriteIds: favorites } : {}),
     });
-  }, [page, debouncedSearch, favoritesOnly, favorites, onQueryChange]);
+  }, [page, currency, debouncedSearch, favoritesOnly, favorites, onQueryChange]);
   const toggleFavorite = (id: string) => {
     if (favoritesOnly) setPage(1);
     setFavorites((previous) =>
@@ -81,13 +95,13 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
     // Check if any coin hit new 24h high live
     coins.forEach((c) => {
       const sym = c.symbol.toUpperCase();
-      const live = c.binanceSymbol ? livePrices[sym] : undefined;
+      const live = c.binanceSymbol ? displayLivePrices[sym] : undefined;
       if (live && c.high_24h > 0 && live.price > c.high_24h && !notifiedAthRef.current[sym]) {
         notifiedAthRef.current[sym] = true;
         triggerGoldenRain();
       }
     });
-  }, [livePrices, coins]);
+  }, [displayLivePrices, coins]);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,7 +111,7 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
       return;
     }
     setLoadingHistory(true);
-    fetchCryptoHistory(selectedCoin.id, historyDays)
+    fetchCryptoHistory(selectedCoin.id, historyDays, currency)
       .then((history) => {
         if (!cancelled) setCoinHistory(history);
       })
@@ -107,7 +121,7 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [selectedCoin, historyDays]);
+  }, [selectedCoin, historyDays, currency]);
   const handleOpenDetail = (coin: CryptoCoin) => setSelectedCoin(coin);
   const handleDaysChange = (days: number) => setHistoryDays(days);
 
@@ -129,11 +143,11 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
         break;
       case 'price':
         valA =
-          (a.binanceSymbol ? livePrices[a.symbol.toUpperCase()]?.price : undefined) ??
+          (a.binanceSymbol ? displayLivePrices[a.symbol.toUpperCase()]?.price : undefined) ??
           a.current_price ??
           -1;
         valB =
-          (b.binanceSymbol ? livePrices[b.symbol.toUpperCase()]?.price : undefined) ??
+          (b.binanceSymbol ? displayLivePrices[b.symbol.toUpperCase()]?.price : undefined) ??
           b.current_price ??
           -1;
         break;
@@ -159,9 +173,9 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
           <div className="flex items-center space-x-2 text-brand-500 font-bold text-xs uppercase tracking-wider mb-1">
             <Zap className="w-4 h-4 text-brand-500 fill-brand-500 animate-pulse" />
             <span>
-              {connected
+              {connected && currency === 'USD'
                 ? 'Binance conectada • preços em USDT'
-                : 'Preços de referência CoinGecko em USD'}
+                : `Preços de referência CoinGecko em ${currency}`}
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-100">
@@ -200,6 +214,27 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
       {/* Sorting Bar */}
       <div className="flex items-center justify-between flex-wrap gap-4 bg-dark-card border border-dark-border rounded-2xl px-6 py-4">
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+          <label className="inline-flex items-center gap-2 mr-3">
+            <span>Moeda:</span>
+            <select
+              aria-label="Moeda das criptomoedas"
+              value={currency}
+              onChange={(event) => {
+                setCurrency(event.target.value);
+                setSelectedCoin(null);
+              }}
+              className="bg-dark-bg border border-dark-border rounded-lg px-3 py-1.5 text-slate-100 font-bold focus:outline-none focus:border-brand-500"
+            >
+              <option value="USD">USD — Dólar americano</option>
+              <option value="BRL">BRL — Real brasileiro</option>
+              <option value="EUR">EUR — Euro</option>
+              <option value="GBP">GBP — Libra esterlina</option>
+              <option value="JPY">JPY — Iene japonês</option>
+              <option value="CAD">CAD — Dólar canadense</option>
+              <option value="AUD">AUD — Dólar australiano</option>
+              <option value="CHF">CHF — Franco suíço</option>
+            </select>
+          </label>
           <span>Ordenar esta página:</span>
           {(['rank', 'price', 'change24h', 'volume', 'name'] as CryptoSortOption[]).map((opt) => (
             <button
@@ -280,7 +315,7 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {sorted.map((coin) => {
           const sym = coin.symbol.toUpperCase();
-          const live = coin.binanceSymbol ? livePrices[sym] : undefined;
+          const live = coin.binanceSymbol ? displayLivePrices[sym] : undefined;
           const currentPrice = live ? live.price : coin.current_price;
           const isUp = live?.dir === 'up';
           const isDown = live?.dir === 'down';
@@ -348,11 +383,11 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
 
               <div className="space-y-1 my-4">
                 <p className="text-xs text-slate-400 font-medium">
-                  {live ? 'Preço ao vivo (USDT ≈ USD)' : 'Último preço CoinGecko (USD)'}
+                  {live ? 'Preço ao vivo (USDT ≈ USD)' : `Último preço CoinGecko (${currency})`}
                 </p>
                 <div className="font-mono text-2xl font-extrabold text-slate-100">
                   {currentPrice !== null
-                    ? formatCurrency(currentPrice, 'USD')
+                    ? formatCurrency(currentPrice, currency)
                     : 'Cotação indisponível'}
                 </div>
               </div>
@@ -361,13 +396,18 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
                 <div>
                   <span className="block text-[10px] text-slate-500">Mkt Cap</span>
                   <span className="text-slate-300 font-semibold">
-                    ${(coin.market_cap / 1e9).toFixed(2)}B
+                    {new Intl.NumberFormat('pt-BR', {
+                      style: 'currency',
+                      currency,
+                      notation: 'compact',
+                      maximumFractionDigits: 2,
+                    }).format(coin.market_cap)}
                   </span>
                 </div>
                 <div className="text-right">
                   <span className="block text-[10px] text-slate-500">Máx 24h</span>
                   <span className="text-slate-300 font-semibold">
-                    ${coin.high_24h > 0 ? coin.high_24h.toLocaleString() : '—'}
+                    {coin.high_24h > 0 ? formatCurrency(coin.high_24h, currency) : '—'}
                   </span>
                 </div>
               </div>
@@ -453,9 +493,10 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
                     <h2 className="text-2xl font-black text-slate-100">{selectedCoin.name}</h2>
                     <span className="font-mono text-xs font-bold bg-brand-500/10 text-brand-400 px-2 py-0.5 rounded border border-brand-500/30">
                       {selectedCoin.symbol.toUpperCase()}/
-                      {selectedCoin.binanceSymbol && livePrices[selectedCoin.symbol.toUpperCase()]
+                      {selectedCoin.binanceSymbol &&
+                      displayLivePrices[selectedCoin.symbol.toUpperCase()]
                         ? 'USDT'
-                        : 'USD'}
+                        : currency}
                     </span>
                   </div>
                   <p className="text-xs text-slate-400">
@@ -481,9 +522,9 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
                   {(() => {
                     const price =
                       (selectedCoin.binanceSymbol
-                        ? livePrices[selectedCoin.symbol.toUpperCase()]?.price
+                        ? displayLivePrices[selectedCoin.symbol.toUpperCase()]?.price
                         : undefined) ?? selectedCoin.current_price;
-                    return price !== null ? formatCurrency(price, 'USD') : 'Indisponível';
+                    return price !== null ? formatCurrency(price, currency) : 'Indisponível';
                   })()}
                 </span>
               </div>
@@ -499,13 +540,13 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
               <div>
                 <span className="text-[11px] text-slate-500 block">Máxima 24h</span>
                 <span className="text-lg font-bold text-slate-300">
-                  ${selectedCoin.high_24h.toLocaleString()}
+                  {formatCurrency(selectedCoin.high_24h, currency)}
                 </span>
               </div>
               <div>
                 <span className="text-[11px] text-slate-500 block">Mínima 24h</span>
                 <span className="text-lg font-bold text-slate-300">
-                  ${selectedCoin.low_24h.toLocaleString()}
+                  {formatCurrency(selectedCoin.low_24h, currency)}
                 </span>
               </div>
             </div>
@@ -556,7 +597,13 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
                         stroke="#64748b"
                         fontSize={10}
                         domain={['auto', 'auto']}
-                        tickFormatter={(val) => `$${val}`}
+                        tickFormatter={(val) =>
+                          new Intl.NumberFormat('pt-BR', {
+                            style: 'currency',
+                            currency,
+                            notation: 'compact',
+                          }).format(Number(val))
+                        }
                       />
                       <Tooltip
                         contentStyle={{
@@ -566,7 +613,7 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
                           fontSize: '12px',
                         }}
                         labelStyle={{ color: 'rgb(var(--text-muted))' }}
-                        formatter={(value) => [formatCurrency(Number(value), 'USD'), 'Preço']}
+                        formatter={(value) => [formatCurrency(Number(value), currency), 'Preço']}
                       />
                       <Area
                         type="monotone"

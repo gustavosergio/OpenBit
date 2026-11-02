@@ -26,6 +26,7 @@ export function App() {
   const [historyPeriod, setHistoryPeriod] = useState<ForexPeriod>('30d');
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [cryptoQuery, setCryptoQuery] = useState<CryptoQuery>({ page: 1, search: '' });
+  const [cryptoDataCurrency, setCryptoDataCurrency] = useState('USD');
   const [cryptoTotal, setCryptoTotal] = useState(0);
   const onCryptoQueryChange = useCallback((query: CryptoQuery) => {
     setCryptoQuery((previous) =>
@@ -80,6 +81,7 @@ export function App() {
       .then((data) => {
         if (!cancelled) {
           setCoins(data.coins);
+          setCryptoDataCurrency(cryptoQuery.currency ?? 'USD');
           setCryptoTotal(data.total);
         }
       })
@@ -115,7 +117,13 @@ export function App() {
     >
       {/* Top Live Ticker */}
       <LiveTickerBar
-        coins={coins.filter((coin) => coin.current_price !== null && coin.binanceSymbol)}
+        coins={coins.filter(
+          (coin) =>
+            coin.binanceSymbol &&
+            (cryptoDataCurrency === 'USD'
+              ? coin.current_price !== null
+              : Boolean(livePrices[coin.symbol.toUpperCase()]))
+        )}
         prices={livePrices}
         connected={wsConnected}
       />
@@ -159,6 +167,8 @@ export function App() {
 
         {activeTab === 'crypto' && (
           <CryptoDashboard
+            currency={cryptoDataCurrency}
+            selectedCurrency={cryptoQuery.currency ?? 'USD'}
             coins={coins}
             connected={wsConnected}
             loading={loadingCrypto}

@@ -93,14 +93,14 @@ describe('global catalog controls', () => {
     const onQueryChange = vi.fn();
     render(<CryptoDashboard {...props} total={120} onQueryChange={onQueryChange} />);
     fireEvent.click(screen.getByRole('button', { name: 'Próxima' }));
-    expect(onQueryChange).toHaveBeenLastCalledWith({ page: 2, search: '' });
+    expect(onQueryChange).toHaveBeenLastCalledWith({ page: 2, search: '', currency: 'USD' });
     fireEvent.change(screen.getByPlaceholderText(/Buscar cripto/), {
       target: { value: 'outside' },
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(400);
     });
-    expect(onQueryChange).toHaveBeenLastCalledWith({ page: 1, search: 'outside' });
+    expect(onQueryChange).toHaveBeenLastCalledWith({ page: 1, search: 'outside', currency: 'USD' });
   });
   it('sends all favorite IDs to the query instead of filtering only the visible page', () => {
     localStorage.setItem('openbit_crypto_favorites', '["off-page-coin"]');
@@ -112,6 +112,7 @@ describe('global catalog controls', () => {
       page: 1,
       search: '',
       favoriteIds: ['off-page-coin'],
+      currency: 'USD',
     });
   });
   it('does not apply a verified coin live price to another asset with the same symbol', () => {
@@ -125,4 +126,25 @@ describe('global catalog controls', () => {
     expect(screen.getByRole('article', { name: 'Another token' }).textContent).not.toContain('999');
     expect(screen.getByText(/100,00/)).toBeTruthy();
   });
+});
+
+it('requests the selected currency, hides old quotes and does not use USDT ticks as BRL', () => {
+  const onQueryChange = vi.fn();
+  const { rerender } = render(<CryptoDashboard {...props} onQueryChange={onQueryChange} />);
+  fireEvent.change(screen.getByRole('combobox', { name: 'Moeda das criptomoedas' }), {
+    target: { value: 'BRL' },
+  });
+  expect(onQueryChange).toHaveBeenLastCalledWith({ page: 1, search: '', currency: 'BRL' });
+  expect(screen.queryByRole('article')).toBeNull();
+  rerender(
+    <CryptoDashboard
+      {...props}
+      currency="BRL"
+      onQueryChange={onQueryChange}
+      livePrices={{ BTC: { price: 999, dir: 'up' } }}
+    />
+  );
+  expect(screen.getByRole('article', { name: 'Bitcoin' }).textContent).toContain('100,00');
+  expect(screen.getByRole('article', { name: 'Bitcoin' }).textContent).not.toContain('999');
+  expect(screen.getAllByText(/Último preço CoinGecko \(BRL\)/)).toHaveLength(2);
 });

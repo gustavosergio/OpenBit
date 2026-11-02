@@ -1,6 +1,6 @@
 import { useDialog } from '../hooks/useDialog';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, TrendingUp, TrendingDown, RefreshCw, Zap, ExternalLink } from 'lucide-react';
+import { Search, Star, TrendingUp, TrendingDown, RefreshCw, Zap, ExternalLink } from 'lucide-react';
 import { CryptoCoin, CryptoSortOption, CryptoHistoryPoint } from '../types/crypto';
 import { formatCurrency } from '../utils/formatters';
 import { triggerGoldenRain } from '../utils/confetti';
@@ -25,6 +25,29 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
   const [search, setSearch] = useState('');
   const [sortOption, setSortOption] = useState<CryptoSortOption>('rank');
   const [sortAsc, setSortAsc] = useState(true);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [favorites, setFavorites] = useState<string[]>(() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem('openbit_crypto_favorites') ?? '[]');
+      return Array.isArray(saved)
+        ? [...new Set(saved.filter((id): id is string => typeof id === 'string'))]
+        : [];
+    } catch {
+      return [];
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('openbit_crypto_favorites', JSON.stringify(favorites));
+    } catch {
+      // Favorites remain available for this visit if storage is blocked.
+    }
+  }, [favorites]);
+  const toggleFavorite = (id: string) => {
+    setFavorites((previous) =>
+      previous.includes(id) ? previous.filter((favorite) => favorite !== id) : [...previous, id]
+    );
+  };
   const [selectedCoin, setSelectedCoin] = useState<CryptoCoin | null>(null);
   const closeDialog = useCallback(() => setSelectedCoin(null), []);
   useDialog(selectedCoin !== null, closeDialog);
@@ -71,8 +94,9 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
 
   const filtered = coins.filter(
     (c) =>
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.symbol.toLowerCase().includes(search.toLowerCase())
+      (!favoritesOnly || favorites.includes(c.id)) &&
+      (c.name.toLowerCase().includes(search.toLowerCase()) ||
+        c.symbol.toLowerCase().includes(search.toLowerCase()))
   );
 
   const sorted = [...filtered].sort((a, b) => {
@@ -146,7 +170,7 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
 
       {/* Sorting Bar */}
       <div className="flex items-center justify-between flex-wrap gap-4 bg-dark-card border border-dark-border rounded-2xl px-6 py-4">
-        <div className="flex items-center space-x-2 text-xs text-slate-400">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
           <span>Ordenar por:</span>
           {(['rank', 'price', 'change24h', 'volume', 'name'] as CryptoSortOption[]).map((opt) => (
             <button
@@ -176,6 +200,22 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
               {sortOption === opt && (sortAsc ? ' ▲' : ' ▼')}
             </button>
           ))}
+          <button
+            type="button"
+            aria-pressed={favoritesOnly}
+            onClick={() => setFavoritesOnly((previous) => !previous)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-bold text-xs transition-all ${
+              favoritesOnly
+                ? 'bg-brand-500 border-brand-500 text-brand-ink'
+                : 'bg-dark-bg hover:bg-dark-hover text-slate-300 border-dark-border'
+            }`}
+          >
+            <Star
+              aria-hidden="true"
+              className={`w-3.5 h-3.5 ${favoritesOnly ? 'fill-current' : ''}`}
+            />
+            Favoritas
+          </button>
         </div>
 
         <div className="text-xs text-slate-400 font-mono">
@@ -190,7 +230,11 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
       )}
       {!loading && sorted.length === 0 && (
         <p role="status" className="text-sm text-slate-400">
-          Nenhum ativo disponível para esta busca.
+          {favoritesOnly
+            ? search.trim()
+              ? 'Nenhuma favorita encontrada para esta busca.'
+              : 'Nenhuma favorita disponível. Marque a estrela nos ativos para vê-los aqui.'
+            : 'Nenhum ativo disponível para esta busca.'}
         </p>
       )}
       {/* Crypto Cards Grid */}
@@ -204,21 +248,19 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
           const change24h = coin.price_change_percentage_24h;
 
           return (
-            <div
+            <article
               key={coin.id}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  handleOpenDetail(coin);
-                }
-              }}
-              onClick={() => handleOpenDetail(coin)}
+              aria-label={coin.name}
               className={`bg-dark-card border border-dark-border hover:border-brand-500/50 rounded-3xl p-6 shadow-xl cursor-pointer transition-all duration-300 hover:-translate-y-1 relative group ${
                 isUp ? 'animate-flash-green' : isDown ? 'animate-flash-red' : ''
               }`}
             >
+              <button
+                type="button"
+                aria-label={`Ver detalhes de ${coin.name}`}
+                onClick={() => handleOpenDetail(coin)}
+                className="absolute inset-0 z-10 rounded-3xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500"
+              />
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center space-x-3">
                   <img
@@ -283,9 +325,24 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
               {/* Sparkline preview or bottom action */}
               <div className="mt-4 pt-3 border-t border-dark-border/60 flex items-center justify-between text-xs font-semibold text-brand-400 group-hover:text-brand-300">
                 <span>Ver gráficos & detalhes</span>
-                <span className="group-hover:translate-x-1 transition-transform">→</span>
+                <button
+                  type="button"
+                  aria-label={`${favorites.includes(coin.id) ? 'Remover' : 'Adicionar'} ${coin.name} ${favorites.includes(coin.id) ? 'das' : 'às'} favoritas`}
+                  aria-pressed={favorites.includes(coin.id)}
+                  onClick={() => toggleFavorite(coin.id)}
+                  className={`relative z-20 flex items-center justify-center w-10 h-10 rounded-xl border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 ${
+                    favorites.includes(coin.id)
+                      ? 'text-brand-500 bg-brand-500/10 border-brand-500/30'
+                      : 'text-slate-400 bg-dark-bg border-dark-border hover:text-brand-500 hover:border-brand-500/50'
+                  }`}
+                >
+                  <Star
+                    aria-hidden="true"
+                    className={`w-5 h-5 ${favorites.includes(coin.id) ? 'fill-current' : ''}`}
+                  />
+                </button>
               </div>
-            </div>
+            </article>
           );
         })}
       </div>

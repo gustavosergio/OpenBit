@@ -5,3 +5,8 @@ dist-ssr
 .vscode
 .DS_Store
 .env
+
+*.tsbuildinfo
+coverage
+.env.*
+!.env.example

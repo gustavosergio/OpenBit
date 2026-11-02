@@ -1,17 +1,18 @@
 import js from '@eslint/js';
 import globals from 'globals';
-
-export default [
+import tseslint from 'typescript-eslint';
+import hooks from 'eslint-plugin-react-hooks';
+export default tseslint.config(
+  { ignores: ['dist/**', 'coverage/**', 'node_modules/**'] },
   js.configs.recommended,
+  ...tseslint.configs.recommended,
+  { languageOptions: { globals: { ...globals.browser, ...globals.node } } },
   {
-    files: ['**/*.{ts,tsx}'],
-    languageOptions: {
-      ecmaVersion: 2020,
-      globals: globals.browser,
-    },
+    files: ['src/**/*.{ts,tsx}'],
+    plugins: { 'react-hooks': hooks },
     rules: {
-      'no-unused-vars': 'off',
-      'no-console': ['warn', { allow: ['warn', 'error'] }],
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'error',
     },
-  },
-];
+  }
+);

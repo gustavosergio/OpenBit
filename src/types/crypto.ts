@@ -1,10 +1,10 @@
 export interface CryptoCoin {
   id: string;
-  symbol: string;         // e.g. 'btc'
-  binanceSymbol: string;  // e.g. 'btcusdt'
+  symbol: string; // e.g. 'btc'
+  binanceSymbol: string; // e.g. 'btcusdt'
   name: string;
   image: string;
-  current_price: number;
+  current_price: number | null;
   market_cap: number;
   market_cap_rank: number;
   total_volume: number;

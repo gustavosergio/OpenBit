@@ -56,12 +56,12 @@ export const LiveTickerBar: React.FC<LiveTickerBarProps> = ({ coins, prices, con
                   }`}
                 >
                   $
-                  {liveData.price >= 1000
+                  {liveData.price !== null && liveData.price >= 1000
                     ? liveData.price.toLocaleString('en-US', {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })
-                    : liveData.price.toFixed(4)}
+                    : (liveData.price?.toFixed(4) ?? '—')}
                 </span>
                 <span
                   className={`text-[10px] ${coin.price_change_percentage_24h >= 0 ? 'text-brand-accent' : 'text-red-400'}`}

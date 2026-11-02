@@ -26,7 +26,7 @@ O comando `check` executa ESLint, TypeScript, testes de regressão e build de pr
 
 - **Câmbio:** taxas diárias de referência da Frankfurter/BCE; ExchangeRate-API como alternativa, inclusive para moedas não cobertas pelo BCE. A data exibida é a publicação da fonte. Atualizar ignora o cache local.
 - **Históricos de câmbio:** Frankfurter. Pares ou períodos sem cobertura exibem ausência de dados.
-- **Criptomoedas:** doze ativos identificados explicitamente pelo ID CoinGecko, com pares Binance correspondentes. A ordenação por preço considera os ticks recebidos.
+- **Criptomoedas:** catálogo completo da CoinGecko, com paginação de 48 ativos, busca global por nome/símbolo/ID e favoritas entre páginas. As opções de ordenação organizam a página atual. Pares Binance verificados recebem ticks ao vivo; as demais moedas usam as cotações CoinGecko.
 - **Ao vivo:** uma conexão WebSocket Binance compartilhada entre ticker e painel, com reconexão e limpeza ao desmontar. Preços Binance são em USDT; referências e históricos CoinGecko são em USD. A interface distingue as fontes.
 - Falhas de rede não geram preços estimados nem históricos simulados. Há mensagens de erro e possibilidade de atualizar.
 - Não são necessárias chaves de API. Nunca coloque segredos em variáveis `VITE_*`, pois elas podem aparecer no código público.

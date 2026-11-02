@@ -55,7 +55,7 @@ describe('forex data integrity', () => {
   });
 });
 describe('crypto data integrity', () => {
-  it('maps exchange symbols by coin ID and rejects unrelated tokens', async () => {
+  it('accepts the full market while isolating unverified Binance symbols', async () => {
     const { fetchCryptoMarkets } = await import('./cryptoService');
     fetchMock.mockResolvedValue(
       json([
@@ -65,9 +65,12 @@ describe('crypto data integrity', () => {
       ])
     );
     const coins = await fetchCryptoMarkets();
-    expect(coins).toHaveLength(1);
+    expect(coins).toHaveLength(3);
+    expect(coins[1]).toMatchObject({ id: 'unknown-token', binanceSymbol: '' });
+    expect(coins[2].current_price).toBeNull();
     expect(coins[0]).toMatchObject({ id: 'ethereum', binanceSymbol: 'ethusdt', market_cap: 0 });
-    expect(fetchMock.mock.calls[0][0]).toContain('ids=');
+    expect(fetchMock.mock.calls[0][0]).toContain('per_page=48');
+    expect(fetchMock.mock.calls[0][0]).not.toContain('ids=');
   });
   it('reports outages instead of showing demo prices', async () => {
     const { fetchCryptoMarkets, fetchCryptoHistory } = await import('./cryptoService');
@@ -130,5 +133,58 @@ describe('fallback coverage', () => {
       );
     expect((await fetchForexRates('USD', false, 'ARS')).rates.ARS).toBe(1000);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('complete crypto catalog', () => {
+  const entry = (id: string, name = id) => ({ id, name, symbol: id });
+  it('requests subsequent market pages without a twelve-coin whitelist', async () => {
+    const { fetchCryptoMarkets } = await import('./cryptoService');
+    fetchMock.mockResolvedValue(json([]));
+    await fetchCryptoMarkets(false, 2);
+    const url = new URL(fetchMock.mock.calls[0][0]);
+    expect(url.searchParams.get('page')).toBe('2');
+    expect(url.searchParams.has('ids')).toBe(false);
+    await fetchCryptoMarkets(false, 1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await fetchCryptoMarkets(false, 2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+  it('finds assets outside the first market page and preserves missing quotes', async () => {
+    const { fetchCryptoPage } = await import('./cryptoService');
+    fetchMock
+      .mockResolvedValueOnce(json([entry('bitcoin'), entry('outside', 'Outside Coin')]))
+      .mockResolvedValueOnce(json([]));
+    const result = await fetchCryptoPage({ page: 1, search: 'Outside' });
+    expect(result.total).toBe(1);
+    expect(result.coins[0]).toMatchObject({ id: 'outside', current_price: null });
+    expect(new URL(fetchMock.mock.calls[1][0]).searchParams.get('ids')).toBe('outside');
+  });
+  it('fetches saved favorites globally, including on later result pages', async () => {
+    const { fetchCryptoPage } = await import('./cryptoService');
+    const catalog = Array.from({ length: 60 }, (_, index) =>
+      entry('coin-' + String(index).padStart(2, '0'))
+    );
+    fetchMock.mockResolvedValueOnce(json(catalog)).mockResolvedValueOnce(json([]));
+    const result = await fetchCryptoPage({
+      page: 2,
+      search: '',
+      favoriteIds: catalog.map((c) => c.id),
+    });
+    expect(result.total).toBe(60);
+    expect(result.coins).toHaveLength(12);
+    expect(result.coins[0].id).toBe('coin-48');
+    expect(new URL(fetchMock.mock.calls[1][0]).searchParams.get('ids')?.split(',')).toHaveLength(
+      12
+    );
+  });
+  it('does not query the market for an empty favorites list', async () => {
+    const { fetchCryptoPage } = await import('./cryptoService');
+    fetchMock.mockResolvedValueOnce(json([entry('bitcoin')]));
+    expect(await fetchCryptoPage({ page: 1, search: '', favoriteIds: [] })).toEqual({
+      coins: [],
+      total: 0,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

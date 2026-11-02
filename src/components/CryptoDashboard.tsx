@@ -4,7 +4,7 @@ import { Search, Star, TrendingUp, TrendingDown, RefreshCw, Zap, ExternalLink } 
 import { CryptoCoin, CryptoSortOption, CryptoHistoryPoint } from '../types/crypto';
 import { formatCurrency } from '../utils/formatters';
 import { triggerGoldenRain } from '../utils/confetti';
-import { fetchCryptoHistory } from '../services/cryptoService';
+import { fetchCryptoHistory, CryptoQuery, CRYPTO_PAGE_SIZE } from '../services/cryptoService';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts';
 
 interface CryptoDashboardProps {
@@ -13,6 +13,8 @@ interface CryptoDashboardProps {
   onRefresh: () => void;
   connected: boolean;
   loading: boolean;
+  total?: number;
+  onQueryChange?: (query: CryptoQuery) => void;
 }
 
 export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
@@ -21,8 +23,17 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
   onRefresh,
   connected,
   loading,
+  total = coins.length,
+  onQueryChange,
 }) => {
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const searching = Boolean(onQueryChange) && search.trim() !== debouncedSearch;
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 400);
+    return () => clearTimeout(timer);
+  }, [search]);
   const [sortOption, setSortOption] = useState<CryptoSortOption>('rank');
   const [sortAsc, setSortAsc] = useState(true);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
@@ -43,7 +54,15 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
       // Favorites remain available for this visit if storage is blocked.
     }
   }, [favorites]);
+  useEffect(() => {
+    onQueryChange?.({
+      page,
+      search: debouncedSearch,
+      ...(favoritesOnly ? { favoriteIds: favorites } : {}),
+    });
+  }, [page, debouncedSearch, favoritesOnly, favorites, onQueryChange]);
   const toggleFavorite = (id: string) => {
+    if (favoritesOnly) setPage(1);
     setFavorites((previous) =>
       previous.includes(id) ? previous.filter((favorite) => favorite !== id) : [...previous, id]
     );
@@ -62,7 +81,7 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
     // Check if any coin hit new 24h high live
     coins.forEach((c) => {
       const sym = c.symbol.toUpperCase();
-      const live = livePrices[sym];
+      const live = c.binanceSymbol ? livePrices[sym] : undefined;
       if (live && c.high_24h > 0 && live.price > c.high_24h && !notifiedAthRef.current[sym]) {
         notifiedAthRef.current[sym] = true;
         triggerGoldenRain();
@@ -95,8 +114,9 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
   const filtered = coins.filter(
     (c) =>
       (!favoritesOnly || favorites.includes(c.id)) &&
-      (c.name.toLowerCase().includes(search.toLowerCase()) ||
-        c.symbol.toLowerCase().includes(search.toLowerCase()))
+      (c.id.toLowerCase().includes(search.trim().toLowerCase()) ||
+        c.name.toLowerCase().includes(search.trim().toLowerCase()) ||
+        c.symbol.toLowerCase().includes(search.trim().toLowerCase()))
   );
 
   const sorted = [...filtered].sort((a, b) => {
@@ -104,12 +124,18 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
     let valB = 0;
     switch (sortOption) {
       case 'rank':
-        valA = a.market_cap_rank;
-        valB = b.market_cap_rank;
+        valA = a.market_cap_rank || Number.MAX_SAFE_INTEGER;
+        valB = b.market_cap_rank || Number.MAX_SAFE_INTEGER;
         break;
       case 'price':
-        valA = livePrices[a.symbol.toUpperCase()]?.price ?? a.current_price;
-        valB = livePrices[b.symbol.toUpperCase()]?.price ?? b.current_price;
+        valA =
+          (a.binanceSymbol ? livePrices[a.symbol.toUpperCase()]?.price : undefined) ??
+          a.current_price ??
+          -1;
+        valB =
+          (b.binanceSymbol ? livePrices[b.symbol.toUpperCase()]?.price : undefined) ??
+          b.current_price ??
+          -1;
         break;
       case 'change24h':
         valA = a.price_change_percentage_24h;
@@ -153,7 +179,10 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
               type="text"
               placeholder="Buscar cripto (ex: BTC, Solana)..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
               className="w-full bg-dark-bg border border-dark-border rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-brand-500"
             />
           </div>
@@ -171,7 +200,7 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
       {/* Sorting Bar */}
       <div className="flex items-center justify-between flex-wrap gap-4 bg-dark-card border border-dark-border rounded-2xl px-6 py-4">
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-          <span>Ordenar por:</span>
+          <span>Ordenar esta página:</span>
           {(['rank', 'price', 'change24h', 'volume', 'name'] as CryptoSortOption[]).map((opt) => (
             <button
               key={opt}
@@ -203,7 +232,10 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
           <button
             type="button"
             aria-pressed={favoritesOnly}
-            onClick={() => setFavoritesOnly((previous) => !previous)}
+            onClick={() => {
+              setFavoritesOnly((previous) => !previous);
+              setPage(1);
+            }}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-bold text-xs transition-all ${
               favoritesOnly
                 ? 'bg-brand-500 border-brand-500 text-brand-ink'
@@ -220,15 +252,22 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
 
         <div className="text-xs text-slate-400 font-mono">
           Exibindo <strong className="text-slate-200">{sorted.length}</strong> ativos
+          {onQueryChange && (
+            <span>
+              {' '}
+              • {total.toLocaleString('pt-BR')} no catálogo
+              {favoritesOnly || debouncedSearch ? ' filtrado' : ' completo'}
+            </span>
+          )}
         </div>
       </div>
 
-      {loading && (
+      {(loading || searching) && (
         <p role="status" className="text-sm text-slate-400">
           Carregando criptomoedas...
         </p>
       )}
-      {!loading && sorted.length === 0 && (
+      {!loading && !searching && sorted.length === 0 && (
         <p role="status" className="text-sm text-slate-400">
           {favoritesOnly
             ? search.trim()
@@ -241,7 +280,7 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {sorted.map((coin) => {
           const sym = coin.symbol.toUpperCase();
-          const live = livePrices[sym];
+          const live = coin.binanceSymbol ? livePrices[sym] : undefined;
           const currentPrice = live ? live.price : coin.current_price;
           const isUp = live?.dir === 'up';
           const isDown = live?.dir === 'down';
@@ -263,16 +302,25 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
               />
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center space-x-3">
-                  <img
-                    src={coin.image}
-                    alt={coin.name}
-                    className="w-10 h-10 rounded-full bg-dark-bg p-1 border border-dark-border"
-                  />
+                  {coin.image ? (
+                    <img
+                      src={coin.image}
+                      alt={coin.name}
+                      className="w-10 h-10 rounded-full bg-dark-bg p-1 border border-dark-border"
+                    />
+                  ) : (
+                    <span
+                      aria-hidden="true"
+                      className="w-10 h-10 shrink-0 rounded-full bg-brand-500/10 text-brand-500 flex items-center justify-center font-bold"
+                    >
+                      {coin.symbol.slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
                   <div>
                     <div className="flex items-center space-x-1.5">
                       <span className="font-extrabold text-slate-100">{sym}</span>
                       <span className="text-[10px] text-slate-500 font-mono">
-                        #{coin.market_cap_rank}
+                        {coin.market_cap_rank > 0 ? '#' + coin.market_cap_rank : 'Sem ranking'}
                       </span>
                     </div>
                     <p className="text-xs text-slate-400 font-medium">{coin.name}</p>
@@ -303,7 +351,9 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
                   {live ? 'Preço ao vivo (USDT ≈ USD)' : 'Último preço CoinGecko (USD)'}
                 </p>
                 <div className="font-mono text-2xl font-extrabold text-slate-100">
-                  {formatCurrency(currentPrice, 'USD')}
+                  {currentPrice !== null
+                    ? formatCurrency(currentPrice, 'USD')
+                    : 'Cotação indisponível'}
                 </div>
               </div>
 
@@ -317,7 +367,7 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
                 <div className="text-right">
                   <span className="block text-[10px] text-slate-500">Máx 24h</span>
                   <span className="text-slate-300 font-semibold">
-                    ${coin.high_24h.toLocaleString()}
+                    ${coin.high_24h > 0 ? coin.high_24h.toLocaleString() : '—'}
                   </span>
                 </div>
               </div>
@@ -347,6 +397,32 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
         })}
       </div>
 
+      {onQueryChange && (
+        <nav
+          aria-label="Paginação de criptomoedas"
+          className="flex flex-wrap items-center justify-center gap-4"
+        >
+          <button
+            type="button"
+            disabled={loading || searching || page <= 1}
+            onClick={() => setPage((previous) => previous - 1)}
+            className="px-4 py-2 rounded-xl border border-dark-border text-slate-200 disabled:opacity-40"
+          >
+            Anterior
+          </button>
+          <span className="text-sm text-slate-400">
+            Página {page} de {Math.max(1, Math.ceil(total / CRYPTO_PAGE_SIZE))}
+          </span>
+          <button
+            type="button"
+            disabled={loading || page * CRYPTO_PAGE_SIZE >= total}
+            onClick={() => setPage((previous) => previous + 1)}
+            className="px-4 py-2 rounded-xl border border-dark-border text-slate-200 disabled:opacity-40"
+          >
+            Próxima
+          </button>
+        </nav>
+      )}
       {/* Coin Detail Modal */}
       {selectedCoin && (
         <div
@@ -358,16 +434,28 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
           <div className="bg-dark-card border border-dark-border w-full max-w-3xl rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 animate-in fade-in zoom-in duration-200 relative max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
-                <img
-                  src={selectedCoin.image}
-                  alt={selectedCoin.name}
-                  className="w-12 h-12 rounded-full bg-dark-bg p-1 border border-dark-border"
-                />
+                {selectedCoin.image ? (
+                  <img
+                    src={selectedCoin.image}
+                    alt={selectedCoin.name}
+                    className="w-12 h-12 rounded-full bg-dark-bg p-1 border border-dark-border"
+                  />
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className="w-12 h-12 shrink-0 rounded-full bg-brand-500/10 text-brand-500 flex items-center justify-center font-bold"
+                  >
+                    {selectedCoin.symbol.slice(0, 1).toUpperCase()}
+                  </span>
+                )}
                 <div>
                   <div className="flex items-center space-x-2">
                     <h2 className="text-2xl font-black text-slate-100">{selectedCoin.name}</h2>
                     <span className="font-mono text-xs font-bold bg-brand-500/10 text-brand-400 px-2 py-0.5 rounded border border-brand-500/30">
-                      {selectedCoin.symbol.toUpperCase()}/USDT
+                      {selectedCoin.symbol.toUpperCase()}/
+                      {selectedCoin.binanceSymbol && livePrices[selectedCoin.symbol.toUpperCase()]
+                        ? 'USDT'
+                        : 'USD'}
                     </span>
                   </div>
                   <p className="text-xs text-slate-400">
@@ -390,11 +478,13 @@ export const CryptoDashboard: React.FC<CryptoDashboardProps> = ({
               <div>
                 <span className="text-[11px] text-slate-500 block">Preço Atual</span>
                 <span className="text-lg font-bold text-slate-100">
-                  {formatCurrency(
-                    livePrices[selectedCoin.symbol.toUpperCase()]?.price ||
-                      selectedCoin.current_price,
-                    'USD'
-                  )}
+                  {(() => {
+                    const price =
+                      (selectedCoin.binanceSymbol
+                        ? livePrices[selectedCoin.symbol.toUpperCase()]?.price
+                        : undefined) ?? selectedCoin.current_price;
+                    return price !== null ? formatCurrency(price, 'USD') : 'Indisponível';
+                  })()}
                 </span>
               </div>
               <div>

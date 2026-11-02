@@ -9,7 +9,9 @@ export function useLivePrices(coins: CryptoCoin[]) {
     setPrices({});
     setConnected(false);
     const symbols = new Map(
-      coins.map((coin) => [coin.binanceSymbol.toUpperCase(), coin.symbol.toUpperCase()])
+      coins
+        .filter((coin) => coin.binanceSymbol)
+        .map((coin) => [coin.binanceSymbol.toUpperCase(), coin.symbol.toUpperCase()])
     );
     if (!symbols.size) return;
     let socket: WebSocket | undefined;

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { CryptoDashboard } from '../components/CryptoDashboard';
 import { CryptoCoin } from '../types/crypto';
@@ -84,5 +84,45 @@ describe('crypto favorites', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Favoritas' }));
     expect(screen.getByRole('article', { name: 'Bitcoin' })).toBeTruthy();
     expect(screen.queryByRole('article', { name: 'Ethereum' })).toBeNull();
+  });
+});
+
+describe('global catalog controls', () => {
+  it('requests another page and resets to page one for the global search', async () => {
+    vi.useFakeTimers();
+    const onQueryChange = vi.fn();
+    render(<CryptoDashboard {...props} total={120} onQueryChange={onQueryChange} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Próxima' }));
+    expect(onQueryChange).toHaveBeenLastCalledWith({ page: 2, search: '' });
+    fireEvent.change(screen.getByPlaceholderText(/Buscar cripto/), {
+      target: { value: 'outside' },
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(onQueryChange).toHaveBeenLastCalledWith({ page: 1, search: 'outside' });
+  });
+  it('sends all favorite IDs to the query instead of filtering only the visible page', () => {
+    localStorage.setItem('openbit_crypto_favorites', '["off-page-coin"]');
+    const onQueryChange = vi.fn();
+    render(<CryptoDashboard {...props} total={120} onQueryChange={onQueryChange} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Próxima' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Favoritas' }));
+    expect(onQueryChange).toHaveBeenLastCalledWith({
+      page: 1,
+      search: '',
+      favoriteIds: ['off-page-coin'],
+    });
+  });
+  it('does not apply a verified coin live price to another asset with the same symbol', () => {
+    render(
+      <CryptoDashboard
+        {...props}
+        coins={[{ ...bitcoin, id: 'other-bitcoin', name: 'Another token', binanceSymbol: '' }]}
+        livePrices={{ BTC: { price: 999, dir: 'up' } }}
+      />
+    );
+    expect(screen.getByRole('article', { name: 'Another token' }).textContent).not.toContain('999');
+    expect(screen.getByText(/100,00/)).toBeTruthy();
   });
 });

@@ -102,9 +102,12 @@ vi.mock('../services/forexService', () => ({
   fetchForexRates: vi.fn(),
   fetchForexHistory: vi.fn().mockResolvedValue([]),
 }));
-vi.mock('../services/cryptoService', () => ({ fetchCryptoMarkets: vi.fn().mockResolvedValue([]) }));
+vi.mock('../services/cryptoService', () => ({
+  CRYPTO_PAGE_SIZE: 48,
+  fetchCryptoPage: vi.fn().mockResolvedValue({ coins: [], total: 0 }),
+}));
 import { fetchForexRates } from '../services/forexService';
-import { fetchCryptoMarkets } from '../services/cryptoService';
+import { fetchCryptoPage } from '../services/cryptoService';
 import { App } from '../App';
 import { ForexRates } from '../types/forex';
 describe('application request ordering', () => {
@@ -138,7 +141,7 @@ describe('application request ordering', () => {
     );
     expect(screen.queryByText('Outdated USD provider')).toBeNull();
     expect(screen.getByText(/600,00/)).toBeTruthy();
-    expect(fetchCryptoMarkets).toHaveBeenCalledTimes(1);
+    expect(fetchCryptoPage).toHaveBeenCalledTimes(1);
   });
   it('updates document theme and persists the choice', () => {
     vi.mocked(fetchForexRates).mockReturnValue(new Promise(() => {}));

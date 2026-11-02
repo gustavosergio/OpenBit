@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Navbar } from './components/Navbar';
 import { LiveTickerBar } from './components/LiveTickerBar';
 import { ForexConverter } from './components/ForexConverter';
 import { CryptoDashboard } from './components/CryptoDashboard';
 import { AboutSection } from './components/AboutSection';
 import { fetchForexRates, fetchForexHistory } from './services/forexService';
-import { fetchCryptoMarkets } from './services/cryptoService';
+import { fetchCryptoPage, CryptoQuery } from './services/cryptoService';
 import { useLivePrices } from './hooks/useLivePrices';
 import { CryptoCoin } from './types/crypto';
 import { ForexRates, ForexPeriod, ForexHistoryPoint } from './types/forex';
@@ -25,6 +25,13 @@ export function App() {
   const [historyData, setHistoryData] = useState<ForexHistoryPoint[]>([]);
   const [historyPeriod, setHistoryPeriod] = useState<ForexPeriod>('30d');
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [cryptoQuery, setCryptoQuery] = useState<CryptoQuery>({ page: 1, search: '' });
+  const [cryptoTotal, setCryptoTotal] = useState(0);
+  const onCryptoQueryChange = useCallback((query: CryptoQuery) => {
+    setCryptoQuery((previous) =>
+      JSON.stringify(previous) === JSON.stringify(query) ? previous : query
+    );
+  }, []);
   const [coins, setCoins] = useState<CryptoCoin[]>([]);
   const [forexError, setForexError] = useState('');
   const [cryptoError, setCryptoError] = useState('');
@@ -69,9 +76,12 @@ export function App() {
     setCryptoError('');
     setCoins([]);
     setLoadingCrypto(true);
-    fetchCryptoMarkets(refresh > 0)
+    fetchCryptoPage(cryptoQuery, refresh > 0)
       .then((data) => {
-        if (!cancelled) setCoins(data);
+        if (!cancelled) {
+          setCoins(data.coins);
+          setCryptoTotal(data.total);
+        }
       })
       .catch(() => {
         if (!cancelled) setCryptoError('Criptomoedas indisponíveis. Tente atualizar novamente.');
@@ -82,7 +92,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [refresh]);
+  }, [refresh, cryptoQuery]);
   useEffect(() => {
     let cancelled = false;
     setHistoryData([]);
@@ -104,7 +114,11 @@ export function App() {
       className={`min-h-screen bg-dark-bg text-slate-100 flex flex-col selection:bg-brand-500 selection:text-black ${darkMode ? 'dark' : ''}`}
     >
       {/* Top Live Ticker */}
-      <LiveTickerBar coins={coins} prices={livePrices} connected={wsConnected} />
+      <LiveTickerBar
+        coins={coins.filter((coin) => coin.current_price !== null && coin.binanceSymbol)}
+        prices={livePrices}
+        connected={wsConnected}
+      />
 
       {/* Navbar */}
       <Navbar
@@ -148,6 +162,8 @@ export function App() {
             coins={coins}
             connected={wsConnected}
             loading={loadingCrypto}
+            total={cryptoTotal}
+            onQueryChange={onCryptoQueryChange}
             livePrices={livePrices}
             onRefresh={handleRefreshAll}
           />

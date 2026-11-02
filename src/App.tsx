@@ -174,7 +174,15 @@ export function App() {
             >
               github.com/gustavosergio/OpenBit
             </a>{' '}
-            )
+            ) •{' '}
+            <a
+              href="https://www.linkedin.com/in/gustavo-sérgio"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-brand-400 hover:underline"
+            >
+              LinkedIn de Gustavo Sérgio
+            </a>
           </p>
         </div>
       </footer>

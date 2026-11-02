@@ -1,5 +1,5 @@
 import React from 'react';
-import { Terminal, Github, Code, Cpu, ShieldCheck, ExternalLink } from 'lucide-react';
+import { Terminal, Github, Linkedin, Code, Cpu, ShieldCheck, ExternalLink } from 'lucide-react';
 
 export const AboutSection: React.FC = () => {
   return (
@@ -34,6 +34,15 @@ export const AboutSection: React.FC = () => {
             >
               <Github className="w-5 h-5" />
               <span>GitHub de Gustavo Sérgio</span>
+            </a>
+            <a
+              href="https://www.linkedin.com/in/gustavo-sérgio"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center space-x-2 bg-dark-hover hover:bg-dark-border border border-dark-border text-slate-200 font-bold px-5 py-3 rounded-2xl transition-colors"
+            >
+              <Linkedin className="w-5 h-5 text-brand-500" />
+              <span>LinkedIn de Gustavo Sérgio</span>
             </a>
 
             <a

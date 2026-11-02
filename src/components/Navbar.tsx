@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRightLeft, Sparkles, Github, Terminal } from 'lucide-react';
+import { ArrowRightLeft, Sparkles, Github, Linkedin, Terminal } from 'lucide-react';
 
 interface NavbarProps {
   activeTab: 'forex' | 'crypto' | 'about';
@@ -39,7 +39,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Navigation Tabs */}
-        <nav className="hidden md:flex items-center space-x-1 bg-dark-bg/60 p-1 rounded-xl border border-dark-border">
+        <nav className="hidden xl:flex items-center space-x-1 bg-dark-bg/60 p-1 rounded-xl border border-dark-border">
           <button
             onClick={() => setActiveTab('forex')}
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center space-x-2 ${
@@ -88,6 +88,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Github className="w-4 h-4 text-brand-500" />
             <span>GitHub</span>
           </a>
+          <a
+            href="https://www.linkedin.com/in/gustavo-sérgio"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden sm:flex items-center space-x-2 bg-dark-hover hover:bg-dark-border border border-dark-border px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-300 transition-colors"
+          >
+            <Linkedin className="w-4 h-4 text-brand-500" />
+            <span>LinkedIn</span>
+          </a>
 
           <button
             onClick={() => setDarkMode(!darkMode)}
@@ -102,7 +111,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <div className="md:hidden flex items-center justify-around border-t border-dark-border bg-dark-card py-2 px-4">
+      <div className="xl:hidden flex items-center justify-around border-t border-dark-border bg-dark-card py-2 px-4">
         <button
           onClick={() => setActiveTab('forex')}
           className={`flex flex-col items-center space-y-1 text-xs font-medium ${

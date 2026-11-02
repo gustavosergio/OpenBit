@@ -13,8 +13,6 @@ export const POPULAR_CURRENCIES: Currency[] = [
   { code: 'ARS', name: 'Peso Argentino', symbol: '$', flag: '🇦🇷' },
   { code: 'CLP', name: 'Peso Chileno', symbol: '$', flag: '🇨🇱' },
   { code: 'MXN', name: 'Peso Mexicano', symbol: '$', flag: '🇲🇽' },
-  { code: 'BTC', name: 'Bitcoin (Crypto)', symbol: '₿', flag: '₿' },
-  { code: 'ETH', name: 'Ethereum (Crypto)', symbol: 'Ξ', flag: 'Ξ' },
 ];
 
 export const ALL_CURRENCIES: Currency[] = [

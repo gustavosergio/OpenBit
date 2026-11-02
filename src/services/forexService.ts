@@ -1,171 +1,115 @@
 import { ForexRates, ForexHistoryPoint, ForexPeriod } from '../types/forex';
-
-// Simple in-memory cache
+import { fetchJson, isRecord, isPositive } from './http';
 interface CacheItem<T> {
   data: T;
   timestamp: number;
 }
-
-const cache = new Map<string, CacheItem<any>>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-export async function fetchForexRates(base = 'USD'): Promise<ForexRates> {
-  const cacheKey = `forex_${base}`;
-  const cached = cache.get(cacheKey);
-  const now = Date.now();
-
-  if (cached && now - cached.timestamp < CACHE_TTL) {
-    return cached.data;
-  }
-
-  try {
-    // Primary: Frankfurter API
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-    const res = await fetch(`https://api.frankfurter.dev/v1/latest?base=${base}`, {
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    if (!res.ok) {
-      throw new Error(`Frankfurter HTTP error: ${res.status}`);
-    }
-
-    const data = await res.json();
-    const result: ForexRates = {
-      base: data.base || base,
-      date: data.date || new Date().toISOString().split('T')[0],
-      rates: data.rates || {},
-      source: 'Frankfurter API (Diário / Banco Central Europeu)',
-      lastUpdated: new Date().toISOString(),
-    };
-
-    // Ensure base has rate 1.0
-    result.rates[result.base] = 1.0;
-
-    cache.set(cacheKey, { data: result, timestamp: now });
-    return result;
-  } catch (err) {
-    console.warn('Frankfurter API failed, attempting fallback (open.er-api.com)...', err);
-
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch(`https://open.er-api.com/v6/latest/${base}`, {
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        throw new Error(`Fallback HTTP error: ${res.status}`);
-      }
-
-      const data = await res.json();
-      const result: ForexRates = {
-        base: data.base_code || base,
-        date: data.time_last_update_utc ? data.time_last_update_utc.split(' ')[0] : new Date().toISOString().split('T')[0],
-        rates: data.rates || {},
-        source: 'ExchangeRate-API (Fallback)',
-        lastUpdated: new Date().toISOString(),
-      };
-
-      result.rates[result.base] = 1.0;
-      cache.set(cacheKey, { data: result, timestamp: now });
-      return result;
-    } catch (fallbackErr) {
-      console.error('All forex APIs failed:', fallbackErr);
-      // Return emergency offline fallback
-      return {
-        base: base,
-        date: new Date().toISOString().split('T')[0],
-        rates: {
-          USD: 1.0,
-          BRL: 5.85,
-          EUR: 0.95,
-          GBP: 0.79,
-          JPY: 152.0,
-          CAD: 1.43,
-          AUD: 1.58,
-          CHF: 0.90,
-          CNY: 7.25,
-          ARS: 1050.0,
-          BTC: 0.000011,
-          ETH: 0.00035,
-        },
-        source: 'Modo Offline (Dados Estimados)',
-        lastUpdated: new Date().toISOString(),
-      };
-    }
-  }
+const rateCache = new Map<string, CacheItem<ForexRates>>();
+const historyCache = new Map<string, CacheItem<ForexHistoryPoint[]>>();
+const CACHE_TTL = 5 * 60 * 1000;
+function parseRates(value: unknown): Record<string, number> {
+  if (!isRecord(value)) throw new Error('Invalid exchange rates');
+  const rates = Object.fromEntries(
+    Object.entries(value).filter(([, rate]) => isPositive(rate))
+  ) as Record<string, number>;
+  if (!Object.keys(rates).length) throw new Error('Empty exchange rates');
+  return rates;
 }
-
-export async function fetchForexHistory(base: string, target: string, period: ForexPeriod): Promise<ForexHistoryPoint[]> {
-  const cacheKey = `history_${base}_${target}_${period}`;
-  const cached = cache.get(cacheKey);
-  const now = Date.now();
-  if (cached && now - cached.timestamp < CACHE_TTL * 3) {
+export async function fetchForexRates(
+  base = 'USD',
+  force = false,
+  target?: string
+): Promise<ForexRates> {
+  const cached = rateCache.get(base);
+  if (
+    !force &&
+    cached &&
+    Date.now() - cached.timestamp < CACHE_TTL &&
+    (!target || isPositive(cached.data.rates[target]))
+  )
     return cached.data;
-  }
-
+  let result: ForexRates;
   try {
-    const daysCount = period === '7d' ? 7 : period === '30d' ? 30 : 90;
-    const endDateObj = new Date();
-    const startDateObj = new Date();
-    startDateObj.setDate(endDateObj.getDate() - daysCount);
-
-    const endDate = endDateObj.toISOString().split('T')[0];
-    const startDate = startDateObj.toISOString().split('T')[0];
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 9000);
-
-    const res = await fetch(`https://api.frankfurter.dev/v1/${startDate}..${endDate}?base=${base}&symbols=${target}`, {
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    if (!res.ok) {
-      throw new Error(`History HTTP error: ${res.status}`);
+    const data = await fetchJson(
+      'https://api.frankfurter.dev/v1/latest?base=' + encodeURIComponent(base)
+    );
+    if (
+      !isRecord(data) ||
+      data.base !== base ||
+      typeof data.date !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(data.date) ||
+      !Number.isFinite(Date.parse(data.date))
+    )
+      throw new Error('Invalid Frankfurter response');
+    const rates = { ...parseRates(data.rates), [base]: 1 };
+    if (target && !isPositive(rates[target]))
+      throw new Error('Pair requires broader currency coverage');
+    result = {
+      base,
+      date: data.date,
+      rates,
+      source: 'Frankfurter API (taxas diárias / BCE)',
+      lastUpdated: data.date + 'T00:00:00Z',
+    };
+  } catch {
+    const data = await fetchJson('https://open.er-api.com/v6/latest/' + encodeURIComponent(base));
+    if (
+      !isRecord(data) ||
+      data.result !== 'success' ||
+      data.base_code !== base ||
+      !isPositive(data.time_last_update_unix)
+    ) {
+      throw new Error('Não foi possível obter as taxas de câmbio. Tente atualizar novamente.');
     }
-
-    const data = await res.json();
-    const ratesObj = data.rates || {};
-
-    const points: ForexHistoryPoint[] = Object.keys(ratesObj).sort().map((dateStr) => {
-      const dayRates = ratesObj[dateStr];
-      const rate = dayRates[target] ?? (target === base ? 1.0 : 1.0);
-      return {
-        date: dateStr,
-        rate: Number(rate),
-      };
-    });
-
-    if (points.length === 0) {
-      throw new Error('No history points returned');
-    }
-
-    cache.set(cacheKey, { data: points, timestamp: now });
-    return points;
-  } catch (err) {
-    console.warn('Failed to fetch forex history, generating simulated trend:', err);
-    // Generate realistic fallback history based on current approximate rates
-    const points: ForexHistoryPoint[] = [];
-    const daysCount = period === '7d' ? 7 : period === '30d' ? 30 : 90;
-    let baseRate = target === 'BRL' ? 5.85 : target === 'EUR' ? 0.95 : 1.2;
-    if (base !== 'USD') baseRate = 1.0;
-
-    for (let i = daysCount; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
-      // Slight random walk
-      const fluctuation = (Math.sin(i * 0.5) * 0.02) + ((Math.random() - 0.5) * 0.01);
-      const rate = Number((baseRate * (1 + fluctuation)).toFixed(4));
-      points.push({ date: dateStr, rate });
-    }
-
-    cache.set(cacheKey, { data: points, timestamp: now });
-    return points;
+    const updated = new Date(data.time_last_update_unix * 1000).toISOString();
+    result = {
+      base,
+      date: updated.slice(0, 10),
+      rates: { ...parseRates(data.rates), [base]: 1 },
+      source: 'ExchangeRate-API (taxas diárias)',
+      lastUpdated: updated,
+    };
   }
+  rateCache.set(base, { data: result, timestamp: Date.now() });
+  return result;
+}
+export async function fetchForexHistory(
+  base: string,
+  target: string,
+  period: ForexPeriod,
+  force = false
+): Promise<ForexHistoryPoint[]> {
+  const key = [base, target, period].join('_');
+  const cached = historyCache.get(key);
+  if (!force && cached && Date.now() - cached.timestamp < CACHE_TTL * 3) return cached.data;
+  const days = period === '7d' ? 7 : period === '30d' ? 30 : 90;
+  const end = new Date();
+  const start = new Date(end);
+  start.setUTCDate(end.getUTCDate() - days);
+  if (base === target)
+    return [start, end].map((date) => ({ date: date.toISOString().slice(0, 10), rate: 1 }));
+  try {
+    const data = await fetchJson(
+      'https://api.frankfurter.dev/v1/' +
+        start.toISOString().slice(0, 10) +
+        '..' +
+        end.toISOString().slice(0, 10) +
+        '?base=' +
+        encodeURIComponent(base) +
+        '&symbols=' +
+        encodeURIComponent(target),
+      9000
+    );
+    if (!isRecord(data) || !isRecord(data.rates)) throw new Error('Invalid history');
+    const points = Object.entries(data.rates)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .flatMap(([date, rates]) =>
+        isRecord(rates) && isPositive(rates[target]) ? [{ date, rate: rates[target] }] : []
+      );
+    if (!points.length) throw new Error('Empty history');
+    historyCache.set(key, { data: points, timestamp: Date.now() });
+    return points;
+  } catch {
+    return [];
+  } // Never invent prices for unsupported pairs or outages.
 }

@@ -1,12 +1,11 @@
-export function formatCurrency(
-  value: number,
-  currencyCode = 'BRL',
-  locale = 'pt-BR'
-): string {
+export function formatCurrency(value: number, currencyCode = 'BRL', locale = 'pt-BR'): string {
   try {
     return new Intl.NumberFormat(locale, {
       style: 'currency',
-      currency: currencyCode.length === 3 && currencyCode !== 'BTC' && currencyCode !== 'ETH' ? currencyCode : 'USD',
+      currency:
+        currencyCode.length === 3 && currencyCode !== 'BTC' && currencyCode !== 'ETH'
+          ? currencyCode
+          : 'USD',
       minimumFractionDigits: value < 1 ? 4 : 2,
       maximumFractionDigits: value < 1 ? 6 : 2,
     }).format(value);
@@ -39,7 +38,7 @@ export function formatPercent(value: number, locale = 'pt-BR'): string {
 
 export function formatDate(dateStr: string, locale = 'pt-BR'): string {
   try {
-    const date = new Date(dateStr);
+    const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? dateStr + 'T12:00:00' : dateStr);
     return new Intl.DateTimeFormat(locale, {
       day: '2-digit',
       month: '2-digit',
@@ -54,7 +53,7 @@ export function formatDate(dateStr: string, locale = 'pt-BR'): string {
 
 export function formatShortDate(dateStr: string, locale = 'pt-BR'): string {
   try {
-    const date = new Date(dateStr);
+    const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? dateStr + 'T12:00:00' : dateStr);
     return new Intl.DateTimeFormat(locale, {
       day: '2-digit',
       month: '2-digit',
